@@ -6,9 +6,6 @@
     <title>Document</title>
 </head>
 <body>
-    <header>
-        <h1>HALO SEMUANYA
-        </h1>
-    </header>
+    
 </body>
 </html>
