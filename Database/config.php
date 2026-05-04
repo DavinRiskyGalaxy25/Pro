@@ -2,8 +2,8 @@
 if (!defined('__DBCONFIG__')) {
     define('__DBCONFIG__', true);
     $host     = getenv('DB_HOST')     ?: 'localhost';
-    $username = getenv('DB_USER')     ?: 'uamkantin';
-    $password = getenv('DB_PASS')     ?: 'uamkantin';
+    $username = getenv('DB_USER')     ?: 'root';
+    $password = getenv('DB_PASS')     ?: '';
     $database = getenv('DB_NAME')     ?: 'db_kantin';
     $port     = getenv('DB_PORT')     ?: '3306';
     $pdo = null;
@@ -12,7 +12,7 @@ if (!defined('__DBCONFIG__')) {
         $pdo = new PDO($dsn, $username, $password, [
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES   => false,   // SECURITY: real prepared statements
+            PDO::ATTR_EMULATE_PREPARES   => false,  
             PDO::ATTR_TIMEOUT            => 5,
         ]);
     } catch (PDOException $e) {
