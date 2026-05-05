@@ -1,16 +1,4 @@
 <?php
-// =============================================
-// KantinKu v3 — Auth & Session Security
-// Database/auth.php
-//
-// SECURITY FEATURES:
-//   - Session fingerprinting (IP + User-Agent)
-//   - Session regeneration on login
-//   - CSRF token generation & validation
-//   - Role-based access guards
-//   - Brute-force: login attempt counter di session
-// =============================================
-
 if (!function_exists('kantinStartSession')) {
 
     function kantinStartSession(): void {
@@ -93,9 +81,9 @@ if (!function_exists('kantinStartSession')) {
     }
 
     // ── ROLE CONSTANTS ───────────────────────────
-    const ROLE_ADMIN    = 1;
-    const ROLE_KASIR    = 2;
-    const ROLE_PELANGGAN = 3;
+    define('ROLE_ADMIN', 1);
+    define('ROLE_KASIR', 2);
+    define('ROLE_PELANGGAN', 3);
 
     function currentRole(): int {
         return (int) ($_SESSION['role'] ?? 0);
@@ -125,8 +113,8 @@ if (!function_exists('kantinStartSession')) {
     function requireKasir(): void { requireLogin(ROLE_KASIR); }
 
     // ── BRUTE-FORCE THROTTLE ─────────────────────
-    const MAX_LOGIN_ATTEMPTS = 5;
-    const LOCKOUT_SECONDS    = 300;  // 5 menit
+    define('MAX_LOGIN_ATTEMPTS', 5);
+    define('LOCKOUT_SECONDS', 300);
 
     function recordFailedLogin(): void {
         kantinStartSession();
