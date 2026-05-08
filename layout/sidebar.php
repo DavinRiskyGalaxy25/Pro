@@ -1,14 +1,6 @@
 <?php
-// =============================================
-// KantinKu v3 — Sidebar Navigation
-// layout/sidebar.php
-// =============================================
-
 $q    = preg_replace('/[^a-z0-9_]/', '', strtolower($_GET['q'] ?? 'menu'));
-$role = currentRole(); // dari Database/auth.php
-
-// Definisi menu navigasi beserta role yang diizinkan
-// roles: 1 = Admin, 2 = Kasir
+$role = currentRole(); 
 $navItems = [
     [
         'q'      => 'menu',
@@ -55,11 +47,6 @@ $navItems = [
 ];
 ?>
 
-<!-- =============================================
-     SIDEBAR
-     - Mobile: tersembunyi, muncul saat hamburger diklik
-     - Desktop (lg+): selalu tampil di kiri
-     ============================================= -->
 <aside
     id="sidebar"
     class="fixed top-0 left-0 h-full w-64 bg-gray-900 text-gray-300
@@ -68,7 +55,6 @@ $navItems = [
            transition-transform duration-300 ease-in-out"
 >
 
-    <!-- ── Brand / Logo ── -->
     <div class="flex items-center gap-3 px-5 py-5 border-b border-gray-800 shrink-0">
         <div class="w-9 h-9 rounded-xl bg-green-600 flex items-center justify-center
                     text-white font-black text-lg shrink-0 shadow-lg shadow-green-900/50">
@@ -80,7 +66,6 @@ $navItems = [
                 POS System v3
             </p>
         </div>
-        <!-- Tombol tutup — hanya tampil di mobile -->
         <button
             onclick="closeSidebar()"
             class="ml-auto lg:hidden w-7 h-7 rounded-lg flex items-center justify-center
@@ -91,9 +76,7 @@ $navItems = [
         </button>
     </div>
 
-    <!-- ── Info User yang Login ── -->
     <div class="mx-3 my-3 px-3 py-3 rounded-xl bg-gray-800/60 flex items-center gap-3 shrink-0">
-        <!-- Avatar inisial -->
         <div class="w-9 h-9 rounded-full bg-gradient-to-br from-green-500 to-teal-400
                     flex items-center justify-center text-white font-bold text-sm shrink-0">
             <?= strtoupper(substr($_SESSION['namalengkap'] ?? '?', 0, 1)) ?>
@@ -110,14 +93,12 @@ $navItems = [
                 <?php endif; ?>
             </p>
         </div>
-        <!-- Indikator online -->
         <span class="w-2 h-2 rounded-full bg-green-400 shrink-0
                      shadow-[0_0_6px_2px_rgba(74,222,128,0.5)]"
               title="Online">
         </span>
     </div>
 
-    <!-- ── Navigasi Utama (scrollable) ── -->
     <nav class="flex-1 overflow-y-auto px-3 pb-3"
          style="scrollbar-width: thin; scrollbar-color: #374151 transparent;">
 
@@ -127,7 +108,6 @@ $navItems = [
         </p>
 
         <?php foreach ($navItems as $item):
-            // Sembunyikan item jika role tidak sesuai
             if (!in_array($role, $item['roles'])) continue;
 
             $isActive = ($q === $item['q']);
@@ -141,20 +121,16 @@ $navItems = [
                        ? 'bg-green-600/20 text-green-400 font-semibold'
                        : 'text-gray-400 hover:bg-gray-800 hover:text-white' ?>"
         >
-            <!-- Icon -->
             <span class="text-base w-5 text-center shrink-0 leading-none">
                 <?= $item['icon'] ?>
             </span>
 
-            <!-- Label -->
             <span class="truncate"><?= htmlspecialchars($item['label']) ?></span>
 
-            <!-- Indikator aktif -->
             <?php if ($isActive): ?>
             <span class="ml-auto w-1.5 h-1.5 rounded-full bg-green-400 shrink-0"></span>
             <?php endif; ?>
 
-            <!-- Garis kiri saat aktif -->
             <?php if ($isActive): ?>
             <span class="absolute left-0 top-1/4 bottom-1/4 w-0.5 rounded-full bg-green-400"></span>
             <?php endif; ?>
@@ -163,7 +139,6 @@ $navItems = [
 
     </nav>
 
-    <!-- ── Tombol Logout + Versi ── -->
     <div class="px-3 pb-4 border-t border-gray-800 pt-3 shrink-0">
         <a
             href="/?q=logout"
@@ -181,10 +156,6 @@ $navItems = [
 
 </aside>
 
-<!-- =============================================
-     OVERLAY GELAP (Mobile)
-     Klik overlay = tutup sidebar
-     ============================================= -->
 <div
     id="sidebarOverlay"
     onclick="closeSidebar()"

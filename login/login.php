@@ -1,5 +1,4 @@
 <?php
-// login/login.php
 require_once __DIR__ . '/../Database/config.php';
 require_once __DIR__ . '/../Database/auth.php';
 kantinStartSession();
@@ -10,7 +9,6 @@ $error   = '';
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
-    // CSRF check
     if (!hash_equals(csrfToken(), $_POST['csrf_token'] ?? '')) {
         $error = 'Request tidak valid. Coba lagi.';
     } elseif (isLockedOut()) {
@@ -22,7 +20,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
         if ($username && $password) {
             try {
                 $pdo  = getDB();
-                // Cari berdasarkan username ATAU email
                 $stmt = $pdo->prepare("SELECT * FROM users WHERE username = ? OR email = ? LIMIT 1");
                 $stmt->execute([$username, $username]);
                 $user = $stmt->fetch();
@@ -63,12 +60,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
 <body class="h-full font-sans antialiased">
 
 <div class="min-h-screen flex">
-
-  <!-- Left Panel — Form -->
   <div class="flex-1 flex flex-col justify-center items-center px-8 py-12 bg-white">
     <div class="w-full max-w-sm">
-
-      <!-- Logo -->
       <div class="flex items-center gap-3 mb-8">
         <div class="w-10 h-10 rounded-xl bg-brand-600 flex items-center justify-center text-white font-black text-xl">K</div>
         <div>
@@ -131,11 +124,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
     </div>
   </div>
 
-  <!-- Right Panel — Visual -->
   <div class="hidden lg:flex flex-1 relative bg-gray-900 overflow-hidden items-end">
-    <!-- Gradient overlay -->
     <div class="absolute inset-0 bg-gradient-to-br from-brand-900/80 via-gray-900/60 to-teal-900/80 z-10"></div>
-    <!-- Pattern -->
     <div class="absolute inset-0 opacity-5"
          style="background-image: repeating-linear-gradient(45deg,#fff 0,#fff 1px,transparent 0,transparent 50%);background-size:30px 30px;"></div>
 

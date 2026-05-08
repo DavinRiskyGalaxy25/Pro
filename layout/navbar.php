@@ -1,12 +1,6 @@
 <?php
-// =============================================
-// KantinKu v3 — Top Navbar
-// layout/navbar.php
-// =============================================
-
 $q = preg_replace('/[^a-z0-9_]/', '', strtolower($_GET['q'] ?? 'menu'));
 
-// Judul halaman berdasarkan parameter ?q=
 $pageTitles = [
     'menu'              => 'Kasir / POS',
     'pembayaran'        => 'Pembayaran',
@@ -21,22 +15,13 @@ $pageTitles = [
 
 $pageTitle = $pageTitles[$q] ?? ucfirst(str_replace('_', ' ', $q));
 ?>
-
-<!-- =============================================
-     TOP NAVBAR
-     - Fixed di atas, z-index 50
-     - Tinggi: h-16 (64px)
-     - Konten utama diberi padding-top: pt-16
-     ============================================= -->
 <header
     class="fixed top-0 left-0 right-0 h-16 bg-white border-b border-gray-200
            z-50 flex items-center px-4 gap-3 shadow-sm"
 >
 
-    <!-- ── Kiri: Hamburger + Judul Halaman ── -->
     <div class="flex items-center gap-3 flex-1 min-w-0">
 
-        <!-- Hamburger Mobile (< lg) -->
         <button
             onclick="toggleSidebar()"
             class="p-2 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-900
@@ -48,7 +33,6 @@ $pageTitle = $pageTitles[$q] ?? ucfirst(str_replace('_', ' ', $q));
             </svg>
         </button>
 
-        <!-- Toggle Sidebar Desktop (≥ lg) -->
         <button
             onclick="toggleSidebarDesktop()"
             class="p-2 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-900
@@ -60,21 +44,17 @@ $pageTitle = $pageTitles[$q] ?? ucfirst(str_replace('_', ' ', $q));
             </svg>
         </button>
 
-        <!-- Judul + Tanggal -->
         <div class="min-w-0">
             <h1 class="text-sm font-bold text-gray-900 leading-tight truncate">
                 <?= htmlspecialchars($pageTitle) ?>
             </h1>
             <p class="text-xs text-gray-400 leading-tight mt-0.5" id="topbarDate">
-                <!-- Diisi oleh JavaScript -->
             </p>
         </div>
     </div>
 
-    <!-- ── Kanan: Aksi & Avatar ── -->
     <div class="flex items-center gap-2 shrink-0">
 
-        <!-- Tombol Cart — hanya tampil di halaman POS -->
         <?php if ($q === 'menu'): ?>
         <button
             onclick="prosesCheckout()"
@@ -87,7 +67,6 @@ $pageTitle = $pageTitles[$q] ?? ucfirst(str_replace('_', ' ', $q));
                       d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293
                          c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
             </svg>
-            <!-- Badge jumlah item -->
             <span
                 id="cartBadge"
                 class="absolute -top-1 -right-1 bg-red-500 text-white
@@ -99,7 +78,6 @@ $pageTitle = $pageTitles[$q] ?? ucfirst(str_replace('_', ' ', $q));
         </button>
         <?php endif; ?>
 
-        <!-- Notifikasi (Stok Kritis) — hanya Admin -->
         <?php if (isAdmin()): ?>
         <button
             class="relative p-2 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-900
@@ -112,7 +90,6 @@ $pageTitle = $pageTitles[$q] ?? ucfirst(str_replace('_', ' ', $q));
                       d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
             </svg>
             <?php
-            // Cek stok kritis (stok <= 5)
             try {
                 $pdo  = getDB();
                 $stmt = $pdo->query("SELECT COUNT(*) FROM stok_barang WHERE stok <= 5 AND aktif = 1");
@@ -131,10 +108,8 @@ $pageTitle = $pageTitles[$q] ?? ucfirst(str_replace('_', ' ', $q));
         </button>
         <?php endif; ?>
 
-        <!-- ── Avatar Dropdown ── -->
         <div class="relative" x-data="{ open: false }">
 
-            <!-- Tombol Avatar -->
             <button
                 @click="open = !open"
                 class="w-9 h-9 rounded-full bg-gradient-to-br from-green-500 to-teal-400
@@ -146,7 +121,6 @@ $pageTitle = $pageTitles[$q] ?? ucfirst(str_replace('_', ' ', $q));
                 <?= strtoupper(substr($_SESSION['namalengkap'] ?? '?', 0, 1)) ?>
             </button>
 
-            <!-- Dropdown Panel -->
             <div
                 x-show="open"
                 @click.away="open = false"
@@ -160,7 +134,6 @@ $pageTitle = $pageTitles[$q] ?? ucfirst(str_replace('_', ' ', $q));
                 class="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl
                        border border-gray-100 overflow-hidden z-50"
             >
-                <!-- Header: Info User -->
                 <div class="px-4 py-3 bg-gray-50 border-b border-gray-100">
                     <p class="text-sm font-semibold text-gray-900 truncate">
                         <?= htmlspecialchars($_SESSION['namalengkap'] ?? '—') ?>
@@ -176,7 +149,6 @@ $pageTitle = $pageTitles[$q] ?? ucfirst(str_replace('_', ' ', $q));
                     </span>
                 </div>
 
-                <!-- Menu Links -->
                 <div class="py-1">
                     <a href="/?q=profil"
                        class="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700
@@ -204,7 +176,6 @@ $pageTitle = $pageTitles[$q] ?? ucfirst(str_replace('_', ' ', $q));
                     <?php endif; ?>
                 </div>
 
-                <!-- Logout -->
                 <div class="border-t border-gray-100">
                     <a href="/?q=logout"
                        class="flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium
@@ -215,9 +186,5 @@ $pageTitle = $pageTitles[$q] ?? ucfirst(str_replace('_', ' ', $q));
 
             </div>
         </div>
-        <!-- ── End Avatar Dropdown ── -->
-
     </div>
-    <!-- ── End Kanan ── -->
-
 </header>

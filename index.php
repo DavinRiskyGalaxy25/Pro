@@ -7,10 +7,8 @@ require_once __DIR__ . '/Database/functions.php';
 
 kantinStartSession();
 
-// ── Routing ──────────────────────────────────
 $q = preg_replace('/[^a-z0-9_]/', '', strtolower($_GET['q'] ?? 'menu'));
 
-// Pages that don't require auth
 $publicPages = ['login', 'daftar', 'logout'];
 
 if (!in_array($q, $publicPages) && !isLoggedIn()) {
@@ -18,7 +16,6 @@ if (!in_array($q, $publicPages) && !isLoggedIn()) {
     exit;
 }
 
-// Page map → PHP file
 $pageMap = [
     'menu'              => 'penjualan/menu.php',
     'pembayaran'        => 'penjualan/pembayaran.php',
@@ -33,7 +30,6 @@ $pageMap = [
     'profil'            => 'login/profil.php',
 ];
 
-// Halaman restricted admin only
 $adminOnly = ['stok', 'laporan', 'laporan_penjualan'];
 if (in_array($q, $adminOnly) && !isAdmin()) {
     header('Location: /?q=menu');
@@ -95,14 +91,12 @@ $page = $pageMap[$q] ?? 'penjualan/menu.php';
   </main>
 </div>
 
-<!-- Toast Container -->
 <div id="toastContainer" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
 <?php else: ?>
   <?php include __DIR__ . '/' . $page; ?>
 <?php endif; ?>
 
-<!-- Alpine.js for small interactions -->
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 <script src="/public/js/app.js"></script>
 </body>

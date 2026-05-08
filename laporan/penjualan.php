@@ -1,5 +1,4 @@
 <?php
-// laporan/penjualan.php
 requireAdmin();
 
 $dari   = $_GET['dari']   ?? date('Y-m-01');
@@ -14,7 +13,6 @@ $totalPendapatan = array_sum(array_column(
 $totalTransaksi  = count($rows);
 ?>
 
-<!-- Print styles -->
 <style>
 @media print {
   .no-print { display: none !important; }
@@ -25,7 +23,6 @@ $totalTransaksi  = count($rows);
 
 <div class="space-y-5">
 
-  <!-- Page header -->
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 no-print">
     <div>
       <h1 class="text-xl font-extrabold text-gray-900">Laporan Penjualan</h1>
@@ -41,7 +38,6 @@ $totalTransaksi  = count($rows);
     </div>
   </div>
 
-  <!-- Filter bar -->
   <form method="GET" action="" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 no-print">
     <input type="hidden" name="q" value="laporan_penjualan">
     <div class="flex flex-wrap gap-3 items-end">
@@ -69,7 +65,6 @@ $totalTransaksi  = count($rows);
     </div>
   </form>
 
-  <!-- Summary cards -->
   <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 no-print">
     <?php
     $tunaiTotal   = array_sum(array_column(array_filter($rows, fn($r)=>$r['metode']==='Cash'&&$r['status']==='Lunas'), 'total'));
@@ -93,7 +88,6 @@ $totalTransaksi  = count($rows);
     <?php endforeach; ?>
   </div>
 
-  <!-- Table -->
   <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden card-print">
     <!-- Print header -->
     <div class="hidden print:block p-4 border-b text-center">
@@ -102,7 +96,6 @@ $totalTransaksi  = count($rows);
       <p class="text-sm text-gray-500">Dicetak: <?= date('d/m/Y H:i') ?></p>
     </div>
 
-    <!-- Search -->
     <div class="px-4 py-3 border-b border-gray-100 no-print">
       <div class="relative max-w-xs">
         <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -186,7 +179,6 @@ $totalTransaksi  = count($rows);
           <?php endforeach; ?>
           <?php endif; ?>
         </tbody>
-        <!-- Total footer -->
         <?php if (!empty($rows)): ?>
         <tfoot>
           <tr class="bg-gray-50 border-t-2 border-gray-200 font-bold">
@@ -202,7 +194,6 @@ $totalTransaksi  = count($rows);
 
 </div>
 
-<!-- Detail Modal -->
 <div id="modalDetail" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
   <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
     <div class="flex items-center justify-between px-5 py-4 border-b">
@@ -214,7 +205,6 @@ $totalTransaksi  = count($rows);
 </div>
 
 <script>
-// Pass PHP data to JS (sanitized JSON)
 const laporanData = <?= json_encode(array_map(fn($r) => [
   'id'          => $r['id'],
   'nama'        => $r['nama_pembeli'],

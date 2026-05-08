@@ -3,12 +3,11 @@ if (!function_exists('kantinStartSession')) {
 
     function kantinStartSession(): void {
         if (session_status() === PHP_SESSION_NONE) {
-            // Hardened session cookie settings
             session_set_cookie_params([
                 'lifetime' => 0,
                 'path'     => '/',
-                'secure'   => isset($_SERVER['HTTPS']),  // HTTPS only di production
-                'httponly' => true,                       // Cegah XSS
+                'secure'   => isset($_SERVER['HTTPS']),  
+                'httponly' => true,                     
                 'samesite' => 'Strict',
             ]);
             session_start();
@@ -47,7 +46,7 @@ if (!function_exists('kantinStartSession')) {
     // ── LOGIN ────────────────────────────────────
     function loginUser(array $user): void {
         kantinStartSession();
-        session_regenerate_id(true);  // SECURITY: cegah session fixation
+        session_regenerate_id(true);
 
         $_SESSION['user_id']      = $user['id'];
         $_SESSION['username']     = $user['username'];
@@ -57,18 +56,15 @@ if (!function_exists('kantinStartSession')) {
         $_SESSION['_fingerprint'] = sessionFingerprint();
         $_SESSION['login_at']     = time();
 
-        // Reset failed attempts
         unset($_SESSION['login_attempts'], $_SESSION['lockout_until']);
     }
 
-    // ── LOGOUT ───────────────────────────────────
     function logoutUser(): void {
         kantinStartSession();
         $_SESSION = [];
         session_destroy();
     }
 
-    // ── CHECK AUTH ───────────────────────────────
     function isLoggedIn(): bool {
         kantinStartSession();
         if (empty($_SESSION['user_id'])) return false;
@@ -80,7 +76,6 @@ if (!function_exists('kantinStartSession')) {
         return true;
     }
 
-    // ── ROLE CONSTANTS ───────────────────────────
     define('ROLE_ADMIN', 1);
     define('ROLE_KASIR', 2);
     define('ROLE_PELANGGAN', 3);
@@ -92,11 +87,6 @@ if (!function_exists('kantinStartSession')) {
     function isAdmin(): bool    { return currentRole() === ROLE_ADMIN; }
     function isKasir(): bool    { return in_array(currentRole(), [ROLE_ADMIN, ROLE_KASIR]); }
 
-    // ── GUARDS ───────────────────────────────────
-    /**
-     * Redirect ke login jika belum auth.
-     * Opsional: cek role minimum.
-     */
     function requireLogin(int $minRole = 0): void {
         if (!isLoggedIn()) {
             header('Location: /login.php');
