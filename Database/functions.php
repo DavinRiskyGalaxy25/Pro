@@ -108,7 +108,6 @@ function kurangiStok(int $idBarang, int $qty): bool {
 }
 
 function hitungTotal(array $items, float $diskonPersen = 0, float $pajakPersen = 0): array {
-    // SECURITY: Recalculate dari data server, bukan dari input klien
     $subtotal = 0;
     foreach ($items as $item) {
         $barang = getBarangById((int)($item['id_barang'] ?? 0));
