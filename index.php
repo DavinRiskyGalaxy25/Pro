@@ -5,6 +5,11 @@ require_once __DIR__ . '/Database/config.php';
 require_once __DIR__ . '/Database/auth.php';
 require_once __DIR__ . '/Database/functions.php';
 
+if (!in_array($q, ['login', 'daftar'])):
+    include __DIR__ . '/layout/navbar.php';
+    include __DIR__ . '/layout/sidebar.php';
+endif;
+
 kantinStartSession();
 
 $q = preg_replace('/[^a-z0-9_]/', '', strtolower($_GET['q'] ?? 'menu'));
