@@ -21,7 +21,7 @@ $allBarang = getAllBarang(true);  // hanya aktif
         <?php
         $categories = ['Semua' => ''] + array_unique(array_column($allBarang, 'tipe'));
         foreach ($categories as $cat => $val):
-          $val = $cat === 'Semua' ? '' : $val ?: $cat;
+          $val = $cat === 'Semua' ? '' : ($val ?: $cat);
         ?>
         <button onclick="setKategori(this, '<?= htmlspecialchars($val) ?>')"
                 data-kategori="<?= htmlspecialchars($val) ?>"

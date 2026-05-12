@@ -1,12 +1,29 @@
 <?php
+// =============================================
+// KantinKu v3 — Business Logic Functions
+// Database/functions.php
+//
+// PERBAIKAN:
+//   [BUG-07] kurangiStok() menggunakan FOR UPDATE di LUAR transaksi DB.
+//            FOR UPDATE hanya bekerja dalam BEGIN...COMMIT block.
+//            Di luar transaksi, FOR UPDATE diabaikan → race condition.
+//   [BUG-08] bayarPiutang(): FOR UPDATE dipanggil SEBELUM beginTransaction()
+//            → lock tidak efektif.
+//   [BUG-09] getAllBarang() menggunakan query() dengan string interpolasi $where
+//            → Tidak berbahaya di sini tapi tidak konsisten, perbaiki.
+//   [BUG-10] getLaporanPenjualan(): loop N+1 query untuk items.
+//            → Efisiensi buruk, perbaiki dengan single JOIN query.
+// =============================================
 require_once __DIR__ . '/config.php';
 
+// ─────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────
 function formatRupiah(int|float $n): string {
     return 'Rp ' . number_format((float)$n, 0, ',', '.');
 }
 
 function cleanMoney(mixed $v): int {
-    // Terima "10.000" atau "10000" atau 10000
     return (int) preg_replace('/[^0-9]/', '', (string)$v);
 }
 
@@ -14,10 +31,20 @@ function sanitize(string $v): string {
     return htmlspecialchars(trim($v), ENT_QUOTES, 'UTF-8');
 }
 
+// ─────────────────────────────────────────────
+// STOK BARANG
+// ─────────────────────────────────────────────
+
 function getAllBarang(bool $hanyaAktif = false): array {
     $pdo = getDB();
-    $where = $hanyaAktif ? 'WHERE aktif = 1' : '';
-    $stmt  = $pdo->query("SELECT * FROM stok_barang $where ORDER BY nama_barang ASC");
+    if ($hanyaAktif) {
+        // [FIX-09] Gunakan prepared statement, bukan string interpolasi
+        $stmt = $pdo->prepare("SELECT * FROM stok_barang WHERE aktif = 1 ORDER BY nama_barang ASC");
+        $stmt->execute();
+    } else {
+        $stmt = $pdo->prepare("SELECT * FROM stok_barang ORDER BY nama_barang ASC");
+        $stmt->execute();
+    }
     return $stmt->fetchAll();
 }
 
@@ -35,29 +62,45 @@ function tambahBarang(array $d): int|false {
         VALUES (?, ?, ?, ?, ?, ?)
     ");
     $ok = $stmt->execute([
-        $d['nama_barang'],
-        $d['tipe']        ?? 'makanan',
+        sanitize($d['nama_barang']),
+        $d['tipe']     ?? 'makanan',
         (int)   $d['stok'],
         (float) $d['harga_dasar'],
         (float) $d['harga_jual'],
-        $d['foto']        ?? null,
+        $d['foto']     ?? null,
     ]);
-    return $ok ? (int) $pdo->lastInsertId() : false;
+    if ($ok) {
+        $newId = (int) $pdo->lastInsertId();
+        // Catat riwayat stok masuk
+        $pdo->prepare("
+            INSERT INTO riwayat_stok (id_barang, nama_barang, jenis, jumlah, harga_satuan, total, dicatat_oleh)
+            VALUES (?, ?, 'tambah_barang', ?, ?, ?, ?)
+        ")->execute([
+            $newId,
+            sanitize($d['nama_barang']),
+            (int)   $d['stok'],
+            (float) $d['harga_dasar'],
+            (int)$d['stok'] * (float)$d['harga_dasar'],
+            $d['dicatat_oleh'] ?? 'sistem',
+        ]);
+        return $newId;
+    }
+    return false;
 }
 
 function editBarang(int $id, array $d): bool {
     $pdo  = getDB();
     $stmt = $pdo->prepare("
         UPDATE stok_barang
-        SET nama_barang=?, tipe=?, harga_dasar=?, harga_jual=?, aktif=?
+        SET nama_barang=?, tipe=?, harga_dasar=?, harga_jual=?, aktif=?, updated_at=NOW()
         WHERE id=?
     ");
     return $stmt->execute([
-        $d['nama_barang'],
+        sanitize($d['nama_barang']),
         $d['tipe'],
         (float) $d['harga_dasar'],
         (float) $d['harga_jual'],
-        (int)   ($d['aktif'] ?? 1),
+        (int)  ($d['aktif'] ?? 1),
         $id,
     ]);
 }
@@ -66,11 +109,9 @@ function restockBarang(int $id, int $jumlah, string $pemasok, string $oleh): boo
     $pdo = getDB();
     $pdo->beginTransaction();
     try {
-        // 1. Kurangi/tambah stok
         $pdo->prepare("UPDATE stok_barang SET stok = stok + ?, updated_at = NOW() WHERE id = ?")
             ->execute([$jumlah, $id]);
 
-        // 2. Catat riwayat
         $barang = getBarangById($id);
         $pdo->prepare("
             INSERT INTO riwayat_stok (id_barang, nama_barang, jenis, jumlah, harga_satuan, total, pemasok, dicatat_oleh)
@@ -79,27 +120,28 @@ function restockBarang(int $id, int $jumlah, string $pemasok, string $oleh): boo
             $id,
             $barang['nama_barang'] ?? '—',
             $jumlah,
-            (float) ($barang['harga_dasar'] ?? 0),
+            (float)($barang['harga_dasar'] ?? 0),
             $jumlah * (float)($barang['harga_dasar'] ?? 0),
-            $pemasok,
-            $oleh,
+            sanitize($pemasok),
+            sanitize($oleh),
         ]);
 
         $pdo->commit();
         return true;
     } catch (Throwable $e) {
         $pdo->rollBack();
-        error_log("[stok] restockBarang: " . $e->getMessage());
+        error_log('[stok] restockBarang: ' . $e->getMessage());
         return false;
     }
 }
 
-function kurangiStok(int $idBarang, int $qty): bool {
-    $pdo  = getDB();
-    // Cek stok tidak negatif
+// [FIX-07] kurangiStok() sekarang WAJIB dipanggil dalam transaksi yang sudah aktif.
+// Fungsi tidak membuat transaksi sendiri karena dipanggil dari simpanPenjualan()
+// yang sudah punya transaksi. FOR UPDATE HANYA efektif dalam transaksi aktif.
+function kurangiStok(int $idBarang, int $qty, PDO $pdo): bool {
     $stmt = $pdo->prepare("SELECT stok FROM stok_barang WHERE id = ? FOR UPDATE");
     $stmt->execute([$idBarang]);
-    $row  = $stmt->fetch();
+    $row = $stmt->fetch();
     if (!$row || $row['stok'] < $qty) return false;
 
     $pdo->prepare("UPDATE stok_barang SET stok = stok - ?, updated_at = NOW() WHERE id = ?")
@@ -107,30 +149,36 @@ function kurangiStok(int $idBarang, int $qty): bool {
     return true;
 }
 
+// ─────────────────────────────────────────────
+// PENJUALAN — Logika Kasir
+// ─────────────────────────────────────────────
 function hitungTotal(array $items, float $diskonPersen = 0, float $pajakPersen = 0): array {
     $subtotal = 0;
     foreach ($items as $item) {
+        // SECURITY: Harga SELALU dari DB, tidak dari request
         $barang = getBarangById((int)($item['id_barang'] ?? 0));
         if (!$barang) continue;
-        // Gunakan harga_jual dari DB, BUKAN dari request
-        $subtotal += $barang['harga_jual'] * (int)$item['qty'];
+        $subtotal += $barang['harga_jual'] * max(1, (int)$item['qty']);
     }
-
-    $diskon = round($subtotal * ($diskonPersen / 100));
+    $diskon = (int) round($subtotal * ($diskonPersen / 100));
     $dasar  = $subtotal - $diskon;
-    $pajak  = round($dasar  * ($pajakPersen  / 100));
+    $pajak  = (int) round($dasar    * ($pajakPersen  / 100));
     $total  = $dasar + $pajak;
-
     return compact('subtotal', 'diskon', 'pajak', 'total');
 }
-
 
 function simpanPenjualan(array $data, int $idKasir): array {
     $pdo = getDB();
 
-    // Validasi items tidak kosong
     if (empty($data['items'])) {
         return ['status' => 'error', 'message' => 'Keranjang kosong'];
+    }
+
+    // Validasi qty tidak negatif/nol
+    foreach ($data['items'] as $item) {
+        if ((int)($item['qty'] ?? 0) <= 0) {
+            return ['status' => 'error', 'message' => 'Qty item tidak valid'];
+        }
     }
 
     $hit = hitungTotal(
@@ -139,10 +187,14 @@ function simpanPenjualan(array $data, int $idKasir): array {
         (float)($data['pajak_persen']  ?? 0)
     );
 
-    $nama     = sanitize($data['nama_pembeli'] ?? 'Umum');
-    $metode   = in_array($data['metode'] ?? '', ['Cash','Piutang','Transfer'])
-                ? $data['metode'] : 'Cash';
-    $status   = $metode === 'Piutang' ? 'Piutang' : 'Lunas';
+    if ($hit['total'] <= 0) {
+        return ['status' => 'error', 'message' => 'Total tidak valid'];
+    }
+
+    $nama      = sanitize($data['nama_pembeli'] ?? 'Umum');
+    $metode    = in_array($data['metode'] ?? '', ['Cash', 'Piutang', 'Transfer'])
+                 ? $data['metode'] : 'Cash';
+    $status    = $metode === 'Piutang' ? 'Piutang' : 'Lunas';
     $uangMasuk = $metode === 'Cash' ? cleanMoney($data['uang_masuk'] ?? 0) : $hit['total'];
     $kembalian = max(0, $uangMasuk - $hit['total']);
 
@@ -152,7 +204,7 @@ function simpanPenjualan(array $data, int $idKasir): array {
 
     $pdo->beginTransaction();
     try {
-        // 1. Insert header penjualan
+        // 1. Insert header
         $stmt = $pdo->prepare("
             INSERT INTO penjualan
               (id_kasir, nama_pembeli, subtotal, diskon, pajak, total,
@@ -160,16 +212,9 @@ function simpanPenjualan(array $data, int $idKasir): array {
             VALUES (?,?,?,?,?,?,?,?,?,?,?)
         ");
         $stmt->execute([
-            $idKasir,
-            $nama,
-            $hit['subtotal'],
-            $hit['diskon'],
-            $hit['pajak'],
-            $hit['total'],
-            $metode,
-            $status,
-            $uangMasuk,
-            $kembalian,
+            $idKasir, $nama,
+            $hit['subtotal'], $hit['diskon'], $hit['pajak'], $hit['total'],
+            $metode, $status, $uangMasuk, $kembalian,
             sanitize($data['keterangan'] ?? ''),
         ]);
         $idPenjualan = (int) $pdo->lastInsertId();
@@ -191,22 +236,22 @@ function simpanPenjualan(array $data, int $idKasir): array {
                 $barang['harga_jual'],
             ]);
 
-            // Kurangi stok (gagal tidak rollback seluruh transaksi, hanya log)
-            if (!kurangiStok($barang['id'], (int)$item['qty'])) {
-                error_log("[penjualan] Stok tidak cukup: barang #{$barang['id']}");
+            // [FIX-07] Kirim $pdo ke kurangiStok agar FOR UPDATE efektif
+            if (!kurangiStok($barang['id'], (int)$item['qty'], $pdo)) {
+                // Stok tidak cukup → rollback seluruh transaksi
+                $pdo->rollBack();
+                return ['status' => 'error', 'message' => "Stok '{$barang['nama_barang']}' tidak mencukupi"];
             }
         }
 
-        // 3. Jika Piutang → buat record piutang
+        // 3. Jika Piutang → buat record
         if ($metode === 'Piutang') {
             $pdo->prepare("
                 INSERT INTO piutang (id_penjualan, nama_pembeli, total_hutang, sisa_hutang, keterangan)
                 VALUES (?,?,?,?,?)
             ")->execute([
-                $idPenjualan,
-                $nama,
-                $hit['total'],
-                $hit['total'],
+                $idPenjualan, $nama,
+                $hit['total'], $hit['total'],
                 sanitize($data['keterangan'] ?? ''),
             ]);
         }
@@ -227,15 +272,19 @@ function simpanPenjualan(array $data, int $idKasir): array {
 
     } catch (Throwable $e) {
         $pdo->rollBack();
-        error_log("[penjualan] simpanPenjualan: " . $e->getMessage());
+        error_log('[penjualan] simpanPenjualan: ' . $e->getMessage());
         return ['status' => 'error', 'message' => 'Gagal menyimpan transaksi'];
     }
 }
 
-// Detail struk
 function getStruk(int $idPenjualan): ?array {
     $pdo  = getDB();
-    $stmt = $pdo->prepare("SELECT p.*, u.namalengkap AS kasir_nama FROM penjualan p LEFT JOIN users u ON u.id = p.id_kasir WHERE p.id = ?");
+    $stmt = $pdo->prepare("
+        SELECT p.*, u.namalengkap AS kasir_nama
+        FROM penjualan p
+        LEFT JOIN users u ON u.id = p.id_kasir
+        WHERE p.id = ?
+    ");
     $stmt->execute([$idPenjualan]);
     $trx = $stmt->fetch();
     if (!$trx) return null;
@@ -246,6 +295,10 @@ function getStruk(int $idPenjualan): ?array {
     return $trx;
 }
 
+// ─────────────────────────────────────────────
+// LAPORAN
+// [FIX-10] Ganti loop N+1 query dengan satu JOIN query
+// ─────────────────────────────────────────────
 function getLaporanPenjualan(?string $dari = null, ?string $sampai = null, ?string $status = null): array {
     $pdo    = getDB();
     $where  = ['1=1'];
@@ -255,43 +308,86 @@ function getLaporanPenjualan(?string $dari = null, ?string $sampai = null, ?stri
     if ($sampai) { $where[] = 'DATE(p.tanggal) <= ?'; $params[] = $sampai; }
     if ($status) { $where[] = 'p.status = ?';         $params[] = $status; }
 
-    $sql  = "SELECT p.*, u.namalengkap AS kasir_nama
-             FROM penjualan p
-             LEFT JOIN users u ON u.id = p.id_kasir
-             WHERE " . implode(' AND ', $where) . "
-             ORDER BY p.tanggal DESC";
+    // [FIX-10] Satu query JOIN — ambil header + items sekaligus
+    $sql = "
+        SELECT
+            p.id, p.id_kasir, p.nama_pembeli, p.tanggal,
+            p.subtotal, p.diskon, p.pajak, p.total,
+            p.metode, p.status, p.uang_masuk, p.kembalian, p.keterangan,
+            u.namalengkap AS kasir_nama,
+            dp.id          AS item_id,
+            dp.id_barang,
+            dp.nama_item,
+            dp.qty,
+            dp.harga,
+            dp.subtotal    AS item_subtotal
+        FROM penjualan p
+        LEFT JOIN users u          ON u.id = p.id_kasir
+        LEFT JOIN detail_penjualan dp ON dp.id_penjualan = p.id
+        WHERE " . implode(' AND ', $where) . "
+        ORDER BY p.tanggal DESC, dp.id ASC
+    ";
 
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
-    $rows = $stmt->fetchAll();
+    $rawRows = $stmt->fetchAll();
 
-    $stmtD = $pdo->prepare("SELECT * FROM detail_penjualan WHERE id_penjualan = ?");
-    foreach ($rows as &$row) {
-        $stmtD->execute([$row['id']]);
-        $row['items'] = $stmtD->fetchAll();
+    // Susun ulang: group items per transaksi
+    $result = [];
+    foreach ($rawRows as $row) {
+        $id = $row['id'];
+        if (!isset($result[$id])) {
+            $result[$id] = [
+                'id'          => $row['id'],
+                'id_kasir'    => $row['id_kasir'],
+                'nama_pembeli'=> $row['nama_pembeli'],
+                'tanggal'     => $row['tanggal'],
+                'subtotal'    => $row['subtotal'],
+                'diskon'      => $row['diskon'],
+                'pajak'       => $row['pajak'],
+                'total'       => $row['total'],
+                'metode'      => $row['metode'],
+                'status'      => $row['status'],
+                'uang_masuk'  => $row['uang_masuk'],
+                'kembalian'   => $row['kembalian'],
+                'keterangan'  => $row['keterangan'],
+                'kasir_nama'  => $row['kasir_nama'],
+                'items'       => [],
+            ];
+        }
+        if ($row['item_id']) {
+            $result[$id]['items'][] = [
+                'id'       => $row['item_id'],
+                'id_barang'=> $row['id_barang'],
+                'nama_item'=> $row['nama_item'],
+                'qty'      => $row['qty'],
+                'harga'    => $row['harga'],
+                'subtotal' => $row['item_subtotal'],
+            ];
+        }
     }
-    return $rows;
+
+    return array_values($result);
 }
 
 function getStatsDashboard(): array {
     $pdo  = getDB();
     $hari = date('Y-m-d');
-
     $stats = [];
 
     $stmt = $pdo->prepare("SELECT COALESCE(SUM(total),0) FROM penjualan WHERE DATE(tanggal)=? AND status='Lunas'");
     $stmt->execute([$hari]);
-    $stats['pendapatan_hari'] = (int) $stmt->fetchColumn();
+    $stats['pendapatan_hari'] = (int)$stmt->fetchColumn();
 
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM penjualan WHERE DATE(tanggal)=?");
     $stmt->execute([$hari]);
-    $stats['trx_hari'] = (int) $stmt->fetchColumn();
+    $stats['trx_hari'] = (int)$stmt->fetchColumn();
 
     $stmt = $pdo->query("SELECT COALESCE(SUM(sisa_hutang),0) FROM piutang WHERE status='belum_lunas'");
-    $stats['total_piutang'] = (int) $stmt->fetchColumn();
+    $stats['total_piutang'] = (int)$stmt->fetchColumn();
 
     $stmt = $pdo->query("SELECT COUNT(*) FROM stok_barang WHERE stok <= 5 AND aktif=1");
-    $stats['stok_kritis'] = (int) $stmt->fetchColumn();
+    $stats['stok_kritis'] = (int)$stmt->fetchColumn();
 
     $stmt = $pdo->query("
         SELECT DATE(tanggal) AS tgl, SUM(total) AS omzet, COUNT(*) AS jml
@@ -305,30 +401,43 @@ function getStatsDashboard(): array {
     return $stats;
 }
 
+// ─────────────────────────────────────────────
+// PIUTANG
+// [FIX-08] beginTransaction() HARUS sebelum FOR UPDATE
+// ─────────────────────────────────────────────
 function getAllPiutang(string $status = ''): array {
-    $pdo   = getDB();
-    $where = $status ? "WHERE status = ?" : "";
-    $stmt  = $pdo->prepare("SELECT * FROM piutang $where ORDER BY tanggal DESC");
-    $stmt->execute($status ? [$status] : []);
+    $pdo  = getDB();
+    if ($status) {
+        $stmt = $pdo->prepare("SELECT * FROM piutang WHERE status = ? ORDER BY tanggal DESC");
+        $stmt->execute([$status]);
+    } else {
+        $stmt = $pdo->prepare("SELECT * FROM piutang ORDER BY tanggal DESC");
+        $stmt->execute();
+    }
     return $stmt->fetchAll();
 }
 
 function bayarPiutang(int $idPiutang, int $jumlah, string $dibayarOleh): array {
-    $pdo  = getDB();
-    $stmt = $pdo->prepare("SELECT * FROM piutang WHERE id = ? FOR UPDATE");
+    $pdo = getDB();
 
+    // [FIX-08] beginTransaction() DULU, baru FOR UPDATE
     $pdo->beginTransaction();
     try {
+        $stmt = $pdo->prepare("SELECT * FROM piutang WHERE id = ? FOR UPDATE");
         $stmt->execute([$idPiutang]);
         $piutang = $stmt->fetch();
 
-        if (!$piutang) return ['status'=>'error','message'=>'Data piutang tidak ditemukan'];
-        if ($piutang['status'] === 'lunas') return ['status'=>'error','message'=>'Piutang sudah lunas'];
-        if ($jumlah <= 0) return ['status'=>'error','message'=>'Jumlah bayar tidak valid'];
+        if (!$piutang)                          return tap($pdo->rollBack(), fn() => ['status'=>'error','message'=>'Data piutang tidak ditemukan']);
+        if ($piutang['status'] === 'lunas')     { $pdo->rollBack(); return ['status'=>'error','message'=>'Piutang sudah lunas']; }
+        if ($jumlah <= 0)                       { $pdo->rollBack(); return ['status'=>'error','message'=>'Jumlah bayar tidak valid']; }
+        if ($jumlah > (float)$piutang['sisa_hutang']) {
+            $pdo->rollBack();
+            return ['status'=>'error','message'=>'Jumlah melebihi sisa hutang'];
+        }
 
-        $sisaSebelum  = (float) $piutang['sisa_hutang'];
-        $sisaSesudah  = max(0, $sisaSebelum - $jumlah);
-        $newStatus    = $sisaSesudah <= 0 ? 'lunas' : 'belum_lunas';
+        $sisaSebelum = (float)$piutang['sisa_hutang'];
+        $sisaSesudah = max(0, $sisaSebelum - $jumlah);
+        $newStatus   = $sisaSesudah <= 0 ? 'lunas' : 'belum_lunas';
 
         $pdo->prepare("UPDATE piutang SET sisa_hutang=?, status=?, updated_at=NOW() WHERE id=?")
             ->execute([$sisaSesudah, $newStatus, $idPiutang]);
@@ -341,13 +450,16 @@ function bayarPiutang(int $idPiutang, int $jumlah, string $dibayarOleh): array {
 
         $pdo->commit();
         return [
-            'status'      => 'success',
-            'sisa_sesudah'=> $sisaSesudah,
-            'lunas'       => $newStatus === 'lunas',
+            'status'       => 'success',
+            'sisa_sesudah' => $sisaSesudah,
+            'lunas'        => $newStatus === 'lunas',
         ];
     } catch (Throwable $e) {
         $pdo->rollBack();
-        error_log("[piutang] bayarPiutang: " . $e->getMessage());
+        error_log('[piutang] bayarPiutang: ' . $e->getMessage());
         return ['status'=>'error','message'=>'Gagal memproses pembayaran'];
     }
 }
+
+// Helper — mencegah closure void di atas
+function tap(mixed $value, callable $fn): mixed { $fn(); return $value; }

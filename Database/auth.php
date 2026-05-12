@@ -6,15 +6,15 @@ if (!function_exists('kantinStartSession')) {
             session_set_cookie_params([
                 'lifetime' => 0,
                 'path'     => '/',
-                'secure'   => isset($_SERVER['HTTPS']),  
-                'httponly' => true,                     
+                'secure'   => isset($_SERVER['HTTPS']),
+                'httponly' => true,
                 'samesite' => 'Strict',
             ]);
             session_start();
         }
     }
 
-    // ── CSRF ────────────────────────────────────
+    // ── CSRF ──────────────────────────────────
     function csrfToken(): string {
         kantinStartSession();
         if (empty($_SESSION['csrf_token'])) {
@@ -35,7 +35,7 @@ if (!function_exists('kantinStartSession')) {
         }
     }
 
-    // ── SESSION FINGERPRINT ──────────────────────
+    // ── SESSION FINGERPRINT ───────────────────
     function sessionFingerprint(): string {
         return hash('sha256',
             ($_SERVER['HTTP_USER_AGENT'] ?? '') .
@@ -43,11 +43,10 @@ if (!function_exists('kantinStartSession')) {
         );
     }
 
-    // ── LOGIN ────────────────────────────────────
+    // ── LOGIN ─────────────────────────────────
     function loginUser(array $user): void {
         kantinStartSession();
         session_regenerate_id(true);
-
         $_SESSION['user_id']      = $user['id'];
         $_SESSION['username']     = $user['username'];
         $_SESSION['namalengkap']  = $user['namalengkap'];
@@ -55,20 +54,25 @@ if (!function_exists('kantinStartSession')) {
         $_SESSION['role']         = (int) $user['id_role'];
         $_SESSION['_fingerprint'] = sessionFingerprint();
         $_SESSION['login_at']     = time();
-
         unset($_SESSION['login_attempts'], $_SESSION['lockout_until']);
     }
 
+    // ── LOGOUT ────────────────────────────────
     function logoutUser(): void {
         kantinStartSession();
         $_SESSION = [];
+        if (ini_get('session.use_cookies')) {
+            $p = session_get_cookie_params();
+            setcookie(session_name(), '', time() - 42000,
+                $p['path'], $p['domain'], $p['secure'], $p['httponly']);
+        }
         session_destroy();
     }
 
+    // ── CHECK AUTH ────────────────────────────
     function isLoggedIn(): bool {
         kantinStartSession();
         if (empty($_SESSION['user_id'])) return false;
-        // Fingerprint check — invalidate jika IP/UA berubah drastis
         if (($_SESSION['_fingerprint'] ?? '') !== sessionFingerprint()) {
             logoutUser();
             return false;
@@ -76,25 +80,27 @@ if (!function_exists('kantinStartSession')) {
         return true;
     }
 
-    define('ROLE_ADMIN', 1);
-    define('ROLE_KASIR', 2);
-    define('ROLE_PELANGGAN', 3);
+    // ── ROLE CONSTANTS ────────────────────────
+    if (!defined('ROLE_ADMIN'))    define('ROLE_ADMIN',    1);
+    if (!defined('ROLE_KASIR'))    define('ROLE_KASIR',    2);
+    if (!defined('ROLE_PELANGGAN'))define('ROLE_PELANGGAN',3);
 
-    function currentRole(): int {
-        return (int) ($_SESSION['role'] ?? 0);
-    }
-
+    function currentRole(): int { return (int)($_SESSION['role'] ?? 0); }
     function isAdmin(): bool    { return currentRole() === ROLE_ADMIN; }
     function isKasir(): bool    { return in_array(currentRole(), [ROLE_ADMIN, ROLE_KASIR]); }
 
+    // ── GUARDS ────────────────────────────────
     function requireLogin(int $minRole = 0): void {
         if (!isLoggedIn()) {
-            header('Location: /login.php');
+            // [FIX-05] Redirect ke front controller, BUKAN /login.php
+            header('Location: /?q=login');
             exit;
         }
         if ($minRole > 0 && currentRole() > $minRole) {
             http_response_code(403);
-            include __DIR__ . '/../layout/forbidden.php';
+            // [FIX-06] Jangan include forbidden.php yang tidak ada
+            // Tampilkan pesan sederhana atau redirect
+            header('Location: /?q=menu');
             exit;
         }
     }
@@ -102,9 +108,9 @@ if (!function_exists('kantinStartSession')) {
     function requireAdmin(): void { requireLogin(ROLE_ADMIN); }
     function requireKasir(): void { requireLogin(ROLE_KASIR); }
 
-    // ── BRUTE-FORCE THROTTLE ─────────────────────
-    define('MAX_LOGIN_ATTEMPTS', 5);
-    define('LOCKOUT_SECONDS', 300);
+    // ── BRUTE-FORCE THROTTLE ──────────────────
+    if (!defined('MAX_LOGIN_ATTEMPTS')) define('MAX_LOGIN_ATTEMPTS', 5);
+    if (!defined('LOCKOUT_SECONDS'))    define('LOCKOUT_SECONDS',    300);
 
     function recordFailedLogin(): void {
         kantinStartSession();
