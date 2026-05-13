@@ -1,8 +1,12 @@
-(function setTopbarDate() {
+// ================================================
+// Kantin UAM — Global JS  |  public/js/app.js
+// ================================================
+
+// ── Topbar date ──────────────────────────────────
+(function () {
   const el = document.getElementById("topbarDate");
   if (!el) return;
-  const now = new Date();
-  el.textContent = now.toLocaleDateString("id-ID", {
+  el.textContent = new Date().toLocaleDateString("id-ID", {
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -10,78 +14,104 @@
   });
 })();
 
-// ── Sidebar Toggle (Mobile) ───────────────────
+// ── Sidebar state ────────────────────────────────
+let _sidebarDesktopOpen = true;
+
 function toggleSidebar() {
-  const sidebar = document.getElementById("sidebar");
-  const overlay = document.getElementById("sidebarOverlay");
-  if (!sidebar) return;
-  const isOpen = !sidebar.classList.contains("-translate-x-full");
-  if (isOpen) {
-    sidebar.classList.add("-translate-x-full");
-    overlay?.classList.add("hidden");
+  const s = document.getElementById("sidebar");
+  const o = document.getElementById("sidebarOverlay");
+  if (!s) return;
+  const hidden = s.classList.contains("-translate-x-full");
+  if (hidden) {
+    s.classList.remove("-translate-x-full");
+    o?.classList.remove("hidden");
+    o?.classList.add("block");
   } else {
-    sidebar.classList.remove("-translate-x-full");
-    overlay?.classList.remove("hidden");
+    s.classList.add("-translate-x-full");
+    o?.classList.add("hidden");
+    o?.classList.remove("block");
   }
 }
 
 function closeSidebar() {
-  const sidebar = document.getElementById("sidebar");
-  const overlay = document.getElementById("sidebarOverlay");
-  sidebar?.classList.add("-translate-x-full");
-  overlay?.classList.add("hidden");
+  const s = document.getElementById("sidebar");
+  const o = document.getElementById("sidebarOverlay");
+  s?.classList.add("-translate-x-full");
+  o?.classList.add("hidden");
 }
 
-// ── Sidebar Toggle Desktop ───────────────────
-let sidebarCollapsed = false;
 function toggleSidebarDesktop() {
-  const main = document.getElementById("mainContent");
-  const sidebar = document.getElementById("sidebar");
-  if (!main || !sidebar) return;
-  sidebarCollapsed = !sidebarCollapsed;
-  if (sidebarCollapsed) {
-    sidebar.classList.add("-translate-x-full");
-    main.classList.remove("lg:pl-64");
-    main.classList.add("lg:pl-0");
+  const s = document.getElementById("sidebar");
+  const m = document.getElementById("mainContent");
+  if (!s || !m) return;
+  _sidebarDesktopOpen = !_sidebarDesktopOpen;
+  if (_sidebarDesktopOpen) {
+    s.classList.remove("-translate-x-full");
+    m.classList.add("lg:pl-64");
+    m.classList.remove("lg:pl-0");
   } else {
-    sidebar.classList.remove("-translate-x-full");
-    main.classList.add("lg:pl-64");
-    main.classList.remove("lg:pl-0");
+    s.classList.add("-translate-x-full");
+    m.classList.remove("lg:pl-64");
+    m.classList.add("lg:pl-0");
   }
 }
 
-// ── Toast Notification ────────────────────────
-function showToast(message, type = "default", duration = 3500) {
+// Close sidebar on outside click (mobile)
+document.addEventListener("click", function (e) {
+  const sidebar = document.getElementById("sidebar");
+  const overlay = document.getElementById("sidebarOverlay");
+  const hamburger =
+    e.target.closest('[onclick*="toggleSidebar"]') ||
+    e.target.closest('[onclick*="closeSidebar"]');
+  if (!sidebar || hamburger) return;
+  if (window.innerWidth < 1024) {
+    if (
+      !sidebar.contains(e.target) &&
+      !sidebar.classList.contains("-translate-x-full")
+    ) {
+      closeSidebar();
+    }
+  }
+});
+
+// ── Toast notification ───────────────────────────
+function showToast(msg, type = "default", duration = 3500) {
   const container = document.getElementById("toastContainer");
   if (!container) return;
 
-  const colors = {
-    success: "bg-green-800 text-white",
-    error: "bg-red-800 text-white",
-    warning: "bg-orange-700 text-white",
-    default: "bg-gray-800 text-white",
+  const cfg = {
+    success: { bg: "bg-emerald-700", icon: "fa-circle-check" },
+    error: { bg: "bg-red-700", icon: "fa-circle-xmark" },
+    warning: { bg: "bg-orange-600", icon: "fa-triangle-exclamation" },
+    default: { bg: "bg-gray-800", icon: "fa-circle-info" },
   };
-  const icons = { success: "✓", error: "✕", warning: "⚠", default: "ℹ" };
+  const { bg, icon } = cfg[type] || cfg.default;
 
-  const toast = document.createElement("div");
-  toast.className = `${colors[type] || colors.default}
-    flex items-center gap-2 px-4 py-3 rounded-xl shadow-xl text-sm font-medium
-    pointer-events-auto max-w-xs
-    animate-[slideUp_0.3s_ease]`;
-  toast.innerHTML = `<span class="shrink-0">${icons[type] || icons.default}</span>${message}`;
-  container.appendChild(toast);
+  const el = document.createElement("div");
+  el.className = `${bg} toast-in flex items-center gap-2.5 px-4 py-3 rounded-xl
+                  shadow-xl text-white text-sm font-medium pointer-events-auto max-w-xs`;
+  el.innerHTML = `<i class="fa-solid ${icon} shrink-0"></i><span>${msg}</span>`;
+  container.appendChild(el);
 
   setTimeout(() => {
-    toast.style.opacity = "0";
-    toast.style.transform = "translateY(8px)";
-    toast.style.transition = "all 0.25s ease";
-    setTimeout(() => toast.remove(), 250);
+    el.style.cssText =
+      "opacity:0;transform:translateY(8px);transition:all .25s ease";
+    setTimeout(() => el.remove(), 260);
   }, duration);
 }
 
-// ── Close modal on overlay click ─────────────
-document.addEventListener("click", function (e) {
-  if (e.target.classList.contains("modal-overlay")) {
-    e.target.classList.add("hidden");
+// ── Format Rupiah ────────────────────────────────
+function fmtRp(n) {
+  return "Rp " + Math.round(n || 0).toLocaleString("id-ID");
+}
+
+// ── Keyboard shortcuts ───────────────────────────
+document.addEventListener("keydown", function (e) {
+  // Escape → close any open modal overlay
+  if (e.key === "Escape") {
+    document.querySelectorAll('[id*="modal"],[id*="Modal"]').forEach((el) => {
+      if (!el.classList.contains("hidden")) el.classList.add("hidden");
+    });
+    document.body.style.overflow = "";
   }
 });
